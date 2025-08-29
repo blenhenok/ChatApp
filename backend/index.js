@@ -1,9 +1,14 @@
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+
 const express = require('express');
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
 const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
@@ -12,9 +17,12 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables');
   console.error('SUPABASE_URL:', supabaseUrl);
   console.error('SUPABASE_ANON_KEY:', supabaseKey ? 'Exists' : 'Missing');
+  // Don't exit in production - let it run but log the error
+} else {
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  console.log('Supabase client initialized successfully');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
