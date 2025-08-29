@@ -28,7 +28,7 @@ function App() {
         alert(`Signup failed: ${error.message}`);
       } else {
         alert(
-          "Check your email for verification! You may need to check your spam folder."
+          "Check your email for verification!"
         );
       }
     } catch (err) {
