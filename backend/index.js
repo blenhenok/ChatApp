@@ -7,7 +7,7 @@ const cors = require('cors');
 
 const io = new Server(server, {
   cors: {
-    origin: "https://chatapp-30fhxla5e-blus-projects-6133c151.vercel.app", 
+    origin: "https://chat-fmflhkbal-blus-projects-6133c151.vercel.app", 
     methods: ["GET", "POST"]
   }
 });
@@ -21,6 +21,21 @@ app.get('/', (req, res) => {
 
 io.on('connection', (socket) => {
   console.log('a user connected:', socket.id);
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.join('general-room');
+
+  socket.on('send_message', (data) => {
+    io.to('general-room').emit('receive_message', data);
+    console.log('Message received:', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
 });
 
 // Start the server
