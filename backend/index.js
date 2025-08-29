@@ -5,17 +5,28 @@ const server = http.createServer(app);
 const { Server } = require('socket.io');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const helmet = require('helmet');
 
-// Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Add Helmet for security headers RIGHT HERE
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable CSP for now (you might need to configure this later)
+  crossOriginEmbedderPolicy: false
+}));
 
-// Socket.IO setup with CORS
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  
+  next();
+});
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -33,6 +44,7 @@ const io = new Server(server, {
 
 const connectedUsers = new Map();
 console.log("Allowed origins:", allowedOrigins);
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   socket.join('general-room');

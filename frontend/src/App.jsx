@@ -100,6 +100,7 @@ function AuthForm() {
       <p>
         {isLogin ? "Don't have an account? " : "Already have an account? "}
         <button
+          type="button"
           onClick={() => setIsLogin(!isLogin)}
           style={{
             background: "none",
