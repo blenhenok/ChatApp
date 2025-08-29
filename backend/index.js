@@ -5,13 +5,25 @@ const server = http.createServer(app);
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing Supabase environment variables');
+  console.error('SUPABASE_URL:', supabaseUrl);
+  console.error('SUPABASE_ANON_KEY:', supabaseKey ? 'Exists' : 'Missing');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173",
+];
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      process.env.FRONTEND_URL, // Your production URL
-      "http://localhost:5173",  // Local development
-      "https://chat-1vu7l28rq-blus-projects-6133c151.vercel.app"    // All Vercel deployments (but this might not work perfectly)
-    ], 
+    origin: allowedOrigins,
     methods: ["GET", "POST"]
   }
 });
