@@ -21,6 +21,8 @@ const allowedOrigins = [
   "http://localhost:5173",
 ];
 
+console.log("Allowed origins:", allowedOrigins);
+
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -29,28 +31,25 @@ const io = new Server(server, {
   }
 });
 
-// Store connected users and their rooms
 const connectedUsers = new Map();
-
+console.log("Allowed origins:", allowedOrigins);
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-
-  // Join the general room by default
   socket.join('general-room');
 
-  // Handle user joining with their user ID
+  console.log('User connected:', socket.id);
+  console.log('Request origin:', socket.handshake.headers.origin);
+
   socket.on('user_joined', (userId) => {
     connectedUsers.set(socket.id, userId);
     socket.userId = userId;
     console.log(`User ${userId} joined with socket ID: ${socket.id}`);
   });
 
-  // Handle incoming messages
   socket.on('send_message', async (data) => {
     try {
       console.log('Message received:', data);
       
-      // Get the sender's username from Supabase if not provided
       let username = data.username;
       if (!username && socket.userId) {
         const { data: userData, error } = await supabase
@@ -64,14 +63,12 @@ io.on('connection', (socket) => {
         }
       }
 
-      // Broadcast the message to everyone in the general room
       io.to('general-room').emit('receive_message', {
         content: data.content,
         username: username || 'Anonymous',
         timestamp: new Date().toISOString()
       });
 
-      // Optional: Save message to database
       if (socket.userId) {
         await supabase
           .from('messages')
@@ -87,14 +84,12 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     connectedUsers.delete(socket.id);
   });
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 

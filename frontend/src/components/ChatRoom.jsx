@@ -2,17 +2,21 @@ import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import { supabase } from "../lib/supabaseClient";
 
-// Create socket connection
+// Create socket connection with better configuration
 const socket = io(import.meta.env.VITE_BACKEND_URL, {
   withCredentials: true,
-  autoConnect: true,
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  timeout: 20000,
 });
 
 export function ChatRoom() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [user, setUser] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(socket.connected);
+  const [connectionError, setConnectionError] = useState("");
 
   useEffect(() => {
     // Get the current user
@@ -21,40 +25,60 @@ export function ChatRoom() {
         data: { user },
       } = await supabase.auth.getUser();
       setUser(user);
-
-      // Notify the server that this user joined
-      if (user && socket.connected) {
-        socket.emit("user_joined", user.id);
-      }
     };
 
     getCurrentUser();
 
     // Socket event handlers
-    socket.on("connect", () => {
+    const onConnect = () => {
       console.log("Connected to server");
       setIsConnected(true);
+      setConnectionError("");
 
       // Notify server about user after connection is established
       if (user) {
         socket.emit("user_joined", user.id);
       }
-    });
+    };
 
-    socket.on("disconnect", () => {
-      console.log("Disconnected from server");
+    const onDisconnect = (reason) => {
+      console.log("Disconnected from server:", reason);
       setIsConnected(false);
-    });
 
-    socket.on("receive_message", (data) => {
+      if (reason === "io server disconnect") {
+        // The server has forcefully disconnected the socket
+        socket.connect(); // Try to reconnect
+      }
+    };
+
+    const onConnectError = (error) => {
+      console.log("Connection error:", error);
+      setConnectionError(`Connection failed: ${error.message}`);
+      setIsConnected(false);
+    };
+
+    const onReceiveMessage = (data) => {
       setMessages((prev) => [...prev, data]);
-    });
+    };
+
+    // Set up event listeners
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("receive_message", onReceiveMessage);
+
+    // Manually try to connect if not connected
+    if (!socket.connected) {
+      console.log("Manually connecting...");
+      socket.connect();
+    }
 
     // Cleanup on unmount
     return () => {
-      socket.off("connect");
-      socket.off("disconnect");
-      socket.off("receive_message");
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("receive_message", onReceiveMessage);
     };
   }, [user]);
 
@@ -69,6 +93,11 @@ export function ChatRoom() {
       });
       setMessage("");
     }
+  };
+
+  const handleReconnect = () => {
+    console.log("Manual reconnect attempt");
+    socket.connect();
   };
 
   const handleLogout = async () => {
@@ -88,7 +117,17 @@ export function ChatRoom() {
       >
         <div>
           <h2>General Chat Room</h2>
-          <p>Status: {isConnected ? "Connected" : "Disconnected"}</p>
+          <p>
+            Status:
+            <span
+              style={{
+                color: isConnected ? "green" : "red",
+                fontWeight: "bold",
+              }}
+            >
+              {isConnected ? "Connected" : "Disconnected"}
+            </span>
+          </p>
           <p>Logged in as: {user?.user_metadata?.username || user?.email}</p>
         </div>
         <button
@@ -104,6 +143,26 @@ export function ChatRoom() {
           Logout
         </button>
       </div>
+
+      {connectionError && (
+        <div
+          style={{
+            padding: "10px",
+            background: "#ffeeee",
+            border: "1px solid #ffcccc",
+            borderRadius: "4px",
+            marginBottom: "10px",
+          }}
+        >
+          <p style={{ color: "red", margin: 0 }}>{connectionError}</p>
+          <button
+            onClick={handleReconnect}
+            style={{ marginTop: "5px", padding: "5px 10px" }}
+          >
+            Try to Reconnect
+          </button>
+        </div>
+      )}
 
       <div
         style={{
@@ -156,7 +215,7 @@ export function ChatRoom() {
           type="submit"
           style={{
             padding: "10px 20px",
-            background: "#007bff",
+            background: isConnected ? "#007bff" : "#ccc",
             color: "white",
             border: "none",
             borderRadius: "4px",
