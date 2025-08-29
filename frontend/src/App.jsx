@@ -7,7 +7,7 @@ function App() {
   const [username, setUsername] = useState("");
 
   const handleSignUp = async () => {
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {

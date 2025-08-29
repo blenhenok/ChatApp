@@ -8,12 +8,10 @@ export function ChatRoom() {
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
-    // Listen for incoming messages
     socket.on("receive_message", (data) => {
       setMessages((prev) => [...prev, data]);
     });
 
-    // Clean up on unmount
     return () => socket.off("receive_message");
   }, []);
 
@@ -23,7 +21,7 @@ export function ChatRoom() {
       // Emit the message to the server
       socket.emit("send_message", {
         content: message,
-        username: "CurrentUser", // We'll get this from auth later
+        username: "CurrentUser", 
       });
       setMessage("");
     }
