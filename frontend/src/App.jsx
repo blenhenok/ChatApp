@@ -7,17 +7,36 @@ function App() {
   const [username, setUsername] = useState("");
 
   const handleSignUp = async () => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username: username,
+    try {
+      console.log("Attempting signup with:", { email, username });
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
-      },
-    });
-    if (error) alert(error.message);
-    else alert("Check your email for verification!");
+      });
+
+      console.log("Signup response:", { data, error });
+
+      if (error) {
+        console.error("Signup error details:", error);
+        alert(`Signup failed: ${error.message}`);
+      } else {
+        alert(
+          "Check your email for verification! You may need to check your spam folder."
+        );
+      }
+    } catch (err) {
+      console.error("Unexpected error during signup:", err);
+      alert(
+        "An unexpected error occurred. Please check the console for details."
+      );
+    }
   };
 
   const handleLogin = async () => {

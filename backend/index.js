@@ -23,6 +23,36 @@ if (!supabaseUrl || !supabaseKey) {
   console.log('Supabase client initialized successfully');
 }
 
+app.get('/test-supabase', async (req, res) => {
+  try {
+    console.log('Testing Supabase connection...');
+        const { data, error } = await supabase
+      .from('profiles')
+      .select('count')
+      .limit(1);
+    
+    if (error) {
+      console.error('Supabase test error:', error);
+      return res.status(500).json({ 
+        error: 'Supabase connection failed',
+        details: error.message 
+      });
+    }
+    
+    console.log('Supabase test successful:', data);
+    res.json({ 
+      message: 'Supabase connection successful',
+      data: data 
+    });
+  } catch (err) {
+    console.error('Unexpected error in test endpoint:', err);
+    res.status(500).json({ 
+      error: 'Unexpected error',
+      details: err.message 
+    });
+  }
+});
+
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
