@@ -7,7 +7,11 @@ const cors = require('cors');
 
 const io = new Server(server, {
   cors: {
-    origin: "https://chat-fmflhkbal-blus-projects-6133c151.vercel.app", 
+    origin: [
+      process.env.FRONTEND_URL, // Your production URL
+      "http://localhost:5173",  // Local development
+      "https://chat-1vu7l28rq-blus-projects-6133c151.vercel.app"    // All Vercel deployments (but this might not work perfectly)
+    ], 
     methods: ["GET", "POST"]
   }
 });
