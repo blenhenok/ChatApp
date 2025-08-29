@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001"); // Connect to your local backend
+const socket = io(import.meta.env.VITE_BACKEND_URL);
 
 export function ChatRoom() {
   const [message, setMessage] = useState("");
