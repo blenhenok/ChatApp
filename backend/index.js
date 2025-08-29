@@ -1,7 +1,3 @@
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
-
 const express = require('express');
 const app = express();
 const http = require('http');
@@ -10,50 +6,16 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 
+// Initialize Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
-  console.error('SUPABASE_URL:', supabaseUrl);
-  console.error('SUPABASE_ANON_KEY:', supabaseKey ? 'Exists' : 'Missing');
-  // Don't exit in production - let it run but log the error
-} else {
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  console.log('Supabase client initialized successfully');
-}
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-app.get('/test-supabase', async (req, res) => {
-  try {
-    console.log('Testing Supabase connection...');
-        const { data, error } = await supabase
-      .from('profiles')
-      .select('count')
-      .limit(1);
-    
-    if (error) {
-      console.error('Supabase test error:', error);
-      return res.status(500).json({ 
-        error: 'Supabase connection failed',
-        details: error.message 
-      });
-    }
-    
-    console.log('Supabase test successful:', data);
-    res.json({ 
-      message: 'Supabase connection successful',
-      data: data 
-    });
-  } catch (err) {
-    console.error('Unexpected error in test endpoint:', err);
-    res.status(500).json({ 
-      error: 'Unexpected error',
-      details: err.message 
-    });
-  }
-});
-
-
+// Socket.IO setup with CORS
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -62,37 +24,85 @@ const allowedOrigins = [
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
-app.use(cors());
-app.use(express.json());
-
-app.get('/', (req, res) => {
-  res.send('Chat Server is Running!');
-});
-
-io.on('connection', (socket) => {
-  console.log('a user connected:', socket.id);
+// Store connected users and their rooms
+const connectedUsers = new Map();
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
+  // Join the general room by default
   socket.join('general-room');
 
-  socket.on('send_message', (data) => {
-    io.to('general-room').emit('receive_message', data);
-    console.log('Message received:', data);
+  // Handle user joining with their user ID
+  socket.on('user_joined', (userId) => {
+    connectedUsers.set(socket.id, userId);
+    socket.userId = userId;
+    console.log(`User ${userId} joined with socket ID: ${socket.id}`);
   });
 
+  // Handle incoming messages
+  socket.on('send_message', async (data) => {
+    try {
+      console.log('Message received:', data);
+      
+      // Get the sender's username from Supabase if not provided
+      let username = data.username;
+      if (!username && socket.userId) {
+        const { data: userData, error } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', socket.userId)
+          .single();
+        
+        if (!error && userData) {
+          username = userData.username;
+        }
+      }
+
+      // Broadcast the message to everyone in the general room
+      io.to('general-room').emit('receive_message', {
+        content: data.content,
+        username: username || 'Anonymous',
+        timestamp: new Date().toISOString()
+      });
+
+      // Optional: Save message to database
+      if (socket.userId) {
+        await supabase
+          .from('messages')
+          .insert({
+            content: data.content,
+            user_id: socket.userId,
+            channel_id: 'general-room',
+            created_at: new Date().toISOString()
+          });
+      }
+    } catch (error) {
+      console.error('Error handling message:', error);
+    }
+  });
+
+  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
+    connectedUsers.delete(socket.id);
   });
 });
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    connectedUsers: connectedUsers.size,
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Start the server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
