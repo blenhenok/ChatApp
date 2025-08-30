@@ -4,29 +4,72 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
 const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
 const helmet = require('helmet');
+const { createClient } = require('@supabase/supabase-js');
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase client with error handling
+let supabase;
+try {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+  
+  supabase = createClient(supabaseUrl, supabaseKey);
+  console.log('Supabase client initialized successfully');
+} catch (error) {
+  console.error('Failed to initialize Supabase client:', error.message);
+  process.exit(1);
+}
 
-// Add Helmet for security headers RIGHT HERE
+// Middleware - Order is important!
+app.use(cors()); // Enable CORS first
+
+// Security headers with Helmet (configured properly)
 app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP for now (you might need to configure this later)
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  },
   crossOriginEmbedderPolicy: false
 }));
 
+// Parse JSON bodies
+app.use(express.json());
+
+// Custom cache control (complements Helmet)
 app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'no-store, max-age=0');
-    res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
   next();
 });
 
+// Add charset to Content-Type for JSON responses
+app.use((req, res, next) => {
+  const originalSend = res.send;
+  res.send = function(body) {
+    if (typeof body === 'object' && !res.getHeader('Content-Type')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+    originalSend.call(this, body);
+  };
+  next();
+});
+
+// Socket.IO setup
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
@@ -36,21 +79,31 @@ console.log("Allowed origins:", allowedOrigins);
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or Postman)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.some(allowedOrigin => 
+        origin === allowedOrigin || 
+        origin.includes(allowedOrigin.replace('https://', '').replace('http://', ''))
+      )) {
+        callback(null, true);
+      } else {
+        console.log("Blocked by CORS:", origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true
   }
 });
 
 const connectedUsers = new Map();
-console.log("Allowed origins:", allowedOrigins);
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  socket.join('general-room');
-
-  console.log('User connected:', socket.id);
   console.log('Request origin:', socket.handshake.headers.origin);
+  socket.join('general-room');
 
   socket.on('user_joined', (userId) => {
     connectedUsers.set(socket.id, userId);
@@ -102,12 +155,31 @@ io.on('connection', (socket) => {
   });
 });
 
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     connectedUsers: connectedUsers.size,
     timestamp: new Date().toISOString()
   });
+});
+
+// Test Supabase connection endpoint
+app.get('/test-supabase', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('count')
+      .limit(1);
+    
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+    
+    res.json({ message: 'Supabase connection successful', data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3001;
